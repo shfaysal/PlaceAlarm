@@ -37,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.example.placealarm.utils.decodePolyline
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -61,8 +62,11 @@ import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @SuppressLint("UnrememberedMutableState", "CoroutineCreationDuringComposition")
@@ -76,6 +80,9 @@ fun CurrentLocationScreen(
 ) : Boolean {
 
     val apiKey = BuildConfig.MAPS_API_KEY
+    val directionsApiService = remember {
+        createDirectionApiService()
+    }
 
     Places.initialize(context, apiKey)
 
@@ -105,9 +112,16 @@ fun CurrentLocationScreen(
         mutableStateOf(LatLng(0.0, 0.0))
     }
 
+    var lastLocation by remember {
+        mutableStateOf(LatLng(0.0, 0.0))
+    }
+
+
     var distance by remember {
         mutableDoubleStateOf(1000.0)
     }
+
+
 
     val permissions = arrayOf(
         android.Manifest.permission.ACCESS_FINE_LOCATION,
@@ -124,6 +138,26 @@ fun CurrentLocationScreen(
 
     if (searchLatLng != LatLng(0.0, 0.0)) {
         distance = SphericalUtil.computeDistanceBetween(currentLocation, searchLatLng)
+    }
+    var trackPoints by remember {
+        mutableStateOf<List<LatLng>>(emptyList())
+    }
+
+    LaunchedEffect(key1 = currentLocation) {
+        while (true) {
+            try {
+                delay(2000)
+
+                val totalDistance =  SphericalUtil.computeDistanceBetween(currentLocation, lastLocation)
+                val speedKmh = totalDistance/2
+                Log.d("TimeOut", "Speed : $speedKmh Distance = $totalDistance")
+                lastLocation = currentLocation
+
+            }catch (e: TimeoutCancellationException) {
+                Log.d("TimeOut", "Timeout occurred!")
+            }
+        }
+
     }
 
 
@@ -145,16 +179,36 @@ fun CurrentLocationScreen(
     }
 
     var uiSettings = remember {
-        MapUiSettings(
-
+        MapUiSettings (
+            
         )
     }
+
+
 
     var mapProperties = remember {
         MapProperties(
 //            latLngBoundsForCameraTarget = LatLngBounds(boundCurrentLatLng, boundSearchLatLng)
             isMyLocationEnabled = true,
         )
+    }
+
+    LaunchedEffect(key1 = searchLatLng != LatLng(0.0, 0.0), key2 = currentLocation) {
+        val response = directionsApiService.getDirections(
+            origin = "${currentLocation.latitude},${currentLocation.longitude}",
+            destination = "side_of_road:${searchLatLng.latitude},${searchLatLng.longitude}",
+            apiKey = apiKey
+        )
+
+//        Log.d("ROUTE", response.toString())
+
+        val polyline = response.routes.firstOrNull()?.overview_polyline?.points
+
+        if (!polyline.isNullOrEmpty()) {
+            trackPoints = decodePolyline(polyline)
+        }
+        Log.d("ROUTE", "$polyline")
+
     }
 
 
@@ -193,10 +247,14 @@ fun CurrentLocationScreen(
                     state = MarkerState(position = searchLatLng),
                 )
 
-                Polyline(
-                    points = listOf(currentLocation, searchLatLng),
-                    color = Color.Black
-                )
+                // Draw the route
+                if (trackPoints.isNotEmpty()){
+                    Polyline(
+                        points = trackPoints,
+                        color = Color.Black,
+                        width = 10f
+                    )
+                }
 
                 Circle(
                     center = searchLatLng,
@@ -362,6 +420,8 @@ fun GeoCoderFunc(context: Context, cameraPositionState: CameraPositionState, sea
 @SuppressLint("MissingPermission")
 fun startLocationUpdates(locationCallback:LocationCallback, fusedLocationClientForCurrentPlace: FusedLocationProviderClient) {
     locationCallback?.let {
+        Log.d("GET LOCATION", "startLocationUpdates ")
+
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY, 100
         )

@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity() {
                         super.onLocationResult(p0)
                         for (location in p0.locations) {
                             currentLocation = LatLng(location.latitude, location.longitude)
+                            Log.d("GET LOCATION", "Location inside: $currentLocation")
 
 //                            Log.d("GEOLOCATION", "LocationCallback ${Math.round(lastLocation.latitude * scale) / scale.toDouble()} $locationBtnClicked $currentLocation last = $lastLocation")
 //                                locationBtnClicked = false
@@ -112,9 +113,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        locationCallback?.let {
-            fusedLocationClientForCurrentPlace.removeLocationUpdates(it)
+        if (!locationRequired) {
+            locationCallback?.let {
+                fusedLocationClientForCurrentPlace.removeLocationUpdates(it)
+            }
         }
+
     }
 }
 

@@ -36,7 +36,6 @@ fun GetSearchLocation( cameraPositionState: CameraPositionState, searchText: Str
 
         scope.launch {
             try {
-
                 val placeClient = Places.createClient(context)
                 val request = FindAutocompletePredictionsRequest.builder()
                     .setQuery(searchText)
